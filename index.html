@@ -1,0 +1,1594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Night : Day Speed Ratio · Save the Elephants</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/shpjs@4/dist/shp.min.js"></script>
+  <style>
+    :root {
+      --bg:       #0d1117;
+      --surface:  #161b22;
+      --surface2: #21262d;
+      --border:   #30363d;
+      --text:     #e6edf3;
+      --muted:    #8b949e;
+      --accent:   #58a6ff;
+      --success:  #3fb950;
+      --warning:  #d29922;
+      --danger:   #f85149;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+      font-size: 13px;
+    }
+
+    /* ── Sidebar ─────────────────────────────────────────────────────────── */
+    #sidebar {
+      width: 300px;
+      min-width: 300px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+    }
+    #sidebar::-webkit-scrollbar { width: 6px; }
+    #sidebar::-webkit-scrollbar-track { background: transparent; }
+    #sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    #sidebar-header {
+      padding: 14px 16px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    #sidebar-header h1 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: 0.01em;
+    }
+    #sidebar-header p {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 5px;
+      line-height: 1.5;
+    }
+
+    .section {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-title {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    /* ── Drop zone ───────────────────────────────────────────────────────── */
+    #drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 20px 12px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      user-select: none;
+    }
+    #drop-zone:hover, #drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(88,166,255,0.05);
+    }
+    #drop-zone .dz-icon { font-size: 22px; margin-bottom: 6px; }
+    #drop-zone .dz-text { font-size: 12px; color: var(--muted); }
+    #file-name { font-size: 11px; color: var(--success); margin-top: 6px; min-height: 14px; }
+
+    /* ── Form controls ───────────────────────────────────────────────────── */
+    .field { margin-top: 9px; }
+    .field:first-child { margin-top: 0; }
+    .field > label, label.field-label {
+      display: block;
+      font-size: 10px;
+      color: var(--muted);
+      margin-bottom: 3px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    select, input[type="number"] {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 5px 8px;
+      font-size: 12px;
+      appearance: none;
+      -webkit-appearance: none;
+    }
+    select { cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238b949e'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; padding-right: 24px; }
+    select:focus, input:focus { outline: none; border-color: var(--accent); }
+
+    .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    .inline-row { display: flex; align-items: center; gap: 7px; }
+    .inline-row input { flex: 0 0 72px; width: 72px; }
+    .unit { font-size: 10px; color: var(--muted); line-height: 1.4; }
+
+    /* ── Radio-style buttons ─────────────────────────────────────────────── */
+    .radio-row { display: flex; gap: 5px; margin-top: 3px; }
+    .radio-btn {
+      flex: 1;
+      padding: 5px 4px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+      user-select: none;
+    }
+    .radio-btn.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: rgba(88,166,255,0.1);
+    }
+
+    /* ── Toggle group ────────────────────────────────────────────────────── */
+    .toggle-group { display: flex; gap: 4px; }
+    .toggle-btn {
+      flex: 1;
+      padding: 5px;
+      font-size: 12px;
+      font-weight: 500;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--muted);
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s;
+      user-select: none;
+    }
+    .toggle-btn.active { background: var(--accent); color: #000; border-color: var(--accent); }
+
+    /* ── Buttons ─────────────────────────────────────────────────────────── */
+    .btn {
+      width: 100%;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: none;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, filter 0.2s;
+      letter-spacing: 0.01em;
+    }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+    .btn:not(:disabled):hover { filter: brightness(1.12); }
+    .btn-primary { background: var(--accent); color: #000; }
+    .btn-success { background: var(--success); color: #000; }
+    .btn-outline  { background: transparent; border: 1px solid var(--border); color: var(--text); }
+
+    .btn-sm { width: auto; padding: 3px 9px; font-size: 11px; font-weight: 500; border-radius: 5px; }
+
+    /* ── Checkboxes ──────────────────────────────────────────────────────── */
+    .check-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+    .check-row input[type=checkbox] { accent-color: var(--accent); width: 13px; height: 13px; cursor: pointer; }
+    .check-row label { font-size: 12px; color: var(--text); cursor: pointer; margin: 0; }
+
+    /* ── Individual chips ────────────────────────────────────────────────── */
+    .chip-actions { display: flex; gap: 5px; margin-bottom: 7px; }
+    #individual-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chip {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      cursor: pointer;
+      border: 1px solid;
+      transition: opacity 0.15s;
+      user-select: none;
+      line-height: 1.4;
+    }
+    .chip.inactive { opacity: 0.3; }
+    .chip-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ── Main ────────────────────────────────────────────────────────────── */
+    #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+    #chart-area {
+      flex: 1;
+      padding: 20px 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    #chart-wrap { position: relative; width: 100%; height: 100%; }
+    #myChart    { width: 100% !important; height: 100% !important; }
+
+    /* polygon multi-chart grid */
+    #chart-wrap.poly-grid {
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+      gap: 16px;
+      align-content: start;
+      height: 100%;
+    }
+    .poly-chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .poly-chart-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .poly-chart-canvas-wrap { position: relative; height: 220px; }
+
+    #empty-state {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: var(--muted);
+    }
+    #empty-state .es-icon { font-size: 52px; opacity: 0.4; }
+    #empty-state .es-title { font-size: 15px; font-weight: 600; }
+    #empty-state .es-sub   { font-size: 12px; opacity: 0.7; }
+
+    /* ── Stats bar ───────────────────────────────────────────────────────── */
+    #stats-bar {
+      padding: 8px 24px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 28px;
+      font-size: 11px;
+      color: var(--muted);
+      background: var(--surface);
+      flex-wrap: wrap;
+    }
+    #stats-bar b { color: var(--text); font-weight: 600; }
+
+    /* ── Utility ─────────────────────────────────────────────────────────── */
+    .hidden { display: none !important; }
+    .mt-8 { margin-top: 8px; }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ SIDEBAR ══════════════════════════════════ -->
+<div id="sidebar">
+
+  <div id="sidebar-header">
+    <h1>🌙 Night : Day Speed Ratio</h1>
+    <p>Mean nightly speed ÷ mean daytime speed per elephant per period.<br>
+       Ratio &gt; 1 = more active at night &nbsp;·&nbsp; &lt; 1 = more active by day.</p>
+  </div>
+
+  <!-- 1 · Upload -->
+  <div class="section">
+    <div class="section-title">1 · Data</div>
+    <div id="drop-zone" role="button" tabindex="0" aria-label="Upload CSV">
+      <div class="dz-icon">📂</div>
+      <div class="dz-text">Drop CSV here or click to browse</div>
+      <div id="file-name"></div>
+    </div>
+    <input type="file" id="file-input" accept=".csv" style="display:none">
+  </div>
+
+  <!-- 2 · Column Mapping -->
+  <div class="section hidden" id="col-section">
+    <div class="section-title">2 · Columns</div>
+
+    <div class="field">
+      <label class="field-label">Elephant ID</label>
+      <select id="col-id"></select>
+    </div>
+    <div class="field">
+      <label class="field-label">Timestamp</label>
+      <select id="col-time"></select>
+    </div>
+
+    <div class="field">
+      <label class="field-label">Coordinate type</label>
+      <div class="radio-row">
+        <div class="radio-btn active" id="rb-latlon">Lat / Lon</div>
+        <div class="radio-btn" id="rb-utm">UTM (X / Y)</div>
+      </div>
+    </div>
+
+    <div id="latlon-cols">
+      <div class="row-2">
+        <div class="field">
+          <label class="field-label">Latitude</label>
+          <select id="col-lat"></select>
+        </div>
+        <div class="field">
+          <label class="field-label">Longitude</label>
+          <select id="col-lon"></select>
+        </div>
+      </div>
+    </div>
+
+    <div id="utm-cols" class="hidden">
+      <div class="row-2">
+        <div class="field">
+          <label class="field-label">X (Easting, m)</label>
+          <select id="col-x"></select>
+        </div>
+        <div class="field">
+          <label class="field-label">Y (Northing, m)</label>
+          <select id="col-y"></select>
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">UTC offset</label>
+      <select id="tz-offset">
+        <option value="-12">UTC-12</option>
+        <option value="-11">UTC-11</option>
+        <option value="-10">UTC-10</option>
+        <option value="-9">UTC-9</option>
+        <option value="-8">UTC-8</option>
+        <option value="-7">UTC-7</option>
+        <option value="-6">UTC-6</option>
+        <option value="-5">UTC-5</option>
+        <option value="-4">UTC-4</option>
+        <option value="-3">UTC-3</option>
+        <option value="-2">UTC-2</option>
+        <option value="-1">UTC-1</option>
+        <option value="0">UTC+0 or timestamps already in local time</option>
+        <option value="1">UTC+1 (West Africa)</option>
+        <option value="2">UTC+2</option>
+        <option value="3" selected>UTC+3 (East Africa)</option>
+        <option value="4">UTC+4</option>
+        <option value="5">UTC+5</option>
+        <option value="5.5">UTC+5:30</option>
+        <option value="6">UTC+6</option>
+        <option value="7">UTC+7</option>
+        <option value="8">UTC+8</option>
+        <option value="9">UTC+9</option>
+        <option value="10">UTC+10</option>
+        <option value="11">UTC+11</option>
+        <option value="12">UTC+12</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- 3 · Spatial filter -->
+  <div class="section hidden" id="polygon-section">
+    <div class="section-title">3 · Spatial filter <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:9px">— optional</span></div>
+    <div id="poly-drop-zone" style="border:2px dashed var(--border);border-radius:8px;padding:16px 12px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;user-select:none">
+      <div style="font-size:20px;margin-bottom:5px">🗺</div>
+      <div style="font-size:12px;color:var(--muted)">Drop GeoJSON or zipped shapefile (.zip) here or click to browse</div>
+      <div id="poly-file-name" style="font-size:11px;color:var(--success);margin-top:5px;min-height:14px"></div>
+    </div>
+    <input type="file" id="poly-file-input" accept=".geojson,.json,.zip" style="display:none">
+    <div id="poly-config" class="hidden" style="margin-top:10px">
+      <div class="field">
+        <label class="field-label">Polygon name property</label>
+        <select id="poly-name-prop"></select>
+      </div>
+      <div id="poly-info" style="font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5"></div>
+      <button class="btn btn-outline mt-8" id="clear-poly-btn" style="font-size:11px;padding:5px 10px">✕ Remove polygons</button>
+    </div>
+    <div style="font-size:10px;color:var(--muted);margin-top:8px;line-height:1.5">
+      Steps where both fixes fall within the same polygon are assigned to it. Steps crossing boundaries or outside all polygons are excluded. Accepts GeoJSON or a zipped shapefile (.zip). Coordinates must be in WGS84 (EPSG:4326).
+    </div>
+  </div>
+
+  <!-- 4 · Settings -->
+  <div class="section hidden" id="settings-section">
+    <div class="section-title">4 · Settings</div>
+
+    <div class="field">
+      <label class="field-label">Aggregation period</label>
+      <div class="toggle-group" id="period-toggle">
+        <div class="toggle-btn active" data-val="week">Week</div>
+        <div class="toggle-btn"        data-val="month">Month</div>
+        <div class="toggle-btn"        data-val="year">Year</div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">Daytime window (local hours)</label>
+      <div class="row-2">
+        <div>
+          <label class="field-label">Start (≥)</label>
+          <input type="number" id="day-start" value="6" min="0" max="23">
+        </div>
+        <div>
+          <label class="field-label">End (&lt;)</label>
+          <input type="number" id="day-end" value="18" min="1" max="24">
+        </div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">Min steps required (day &amp; night)</label>
+      <input type="number" id="min-steps" value="2" min="1" max="20">
+    </div>
+
+    <div class="field">
+      <label class="field-label">Max speed (outlier filter)</label>
+      <div class="inline-row">
+        <input type="number" id="max-speed" value="15" min="1" max="200">
+        <span class="unit">km/h</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">Fix interval filter</label>
+      <div class="toggle-group" id="gap-mode-toggle">
+        <div class="toggle-btn active" data-val="max">Max gap</div>
+        <div class="toggle-btn" data-val="median">Median ±</div>
+        <div class="toggle-btn" data-val="select">Manual ±</div>
+      </div>
+
+      <!-- Max gap mode -->
+      <div id="max-gap-panel" style="margin-top:8px">
+        <div class="inline-row">
+          <input type="number" id="max-gap" value="4" min="0.5" max="48" step="0.5">
+          <span class="unit">hours max</span>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;line-height:1.5">
+          All steps up to this limit are included. Excludes long gaps from collar dropouts.
+        </div>
+      </div>
+
+      <!-- Median mode — just the stat display -->
+      <div id="median-gap-panel" class="hidden" style="margin-top:8px">
+        <div style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:8px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <div>
+            <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.07em;margin-bottom:2px">Median fix interval</div>
+            <div id="median-display" style="font-size:18px;font-weight:700;color:var(--text)">—</div>
+          </div>
+          <button class="btn btn-outline btn-sm" id="compute-median-btn">Compute</button>
+        </div>
+      </div>
+
+      <!-- Manual mode — user types the expected fix interval -->
+      <div id="select-gap-panel" class="hidden" style="margin-top:8px">
+        <label class="field-label">Expected fix interval</label>
+        <div class="inline-row">
+          <input type="number" id="select-interval" value="1" min="0.1" max="48" step="0.5">
+          <span class="unit">hours</span>
+        </div>
+      </div>
+
+      <!-- Shared tolerance controls (median and manual modes) -->
+      <div id="tolerance-panel" class="hidden" style="margin-top:8px">
+        <label class="field-label">Tolerance</label>
+        <div class="toggle-group" id="tolerance-toggle">
+          <div class="toggle-btn active" data-val="0.5">± 30 min</div>
+          <div class="toggle-btn" data-val="1.0">± 60 min</div>
+          <div class="toggle-btn" data-val="custom">Custom</div>
+        </div>
+        <div id="custom-tol-panel" class="hidden" style="margin-top:6px">
+          <div class="inline-row">
+            <input type="number" id="custom-tol" value="1" min="0.1" max="12" step="0.1">
+            <span class="unit">hours</span>
+          </div>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:6px;line-height:1.5">
+          Only steps within ± tolerance of the target interval are included.
+        </div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary mt-8" id="calc-btn">Calculate</button>
+  </div>
+
+  <!-- 4 · Display -->
+  <div class="section hidden" id="display-section">
+    <div class="section-title">5 · Display</div>
+
+    <div class="check-row">
+      <input type="checkbox" id="show-mean" checked>
+      <label for="show-mean">Population mean ± SE</label>
+    </div>
+    <div class="check-row">
+      <input type="checkbox" id="show-points" checked>
+      <label for="show-points">Show data points</label>
+    </div>
+
+    <div class="field mt-8">
+      <label class="field-label">Individuals</label>
+      <div class="chip-actions">
+        <button class="btn btn-outline btn-sm" id="sel-all">All</button>
+        <button class="btn btn-outline btn-sm" id="sel-none">None</button>
+      </div>
+      <div id="individual-chips"></div>
+    </div>
+
+    <!-- Polygon controls — shown only when polygons are loaded -->
+    <div id="view-toggle-wrap" class="hidden field mt-8">
+      <label class="field-label">View by</label>
+      <div class="toggle-group" id="view-toggle">
+        <div class="toggle-btn active" data-val="individual">Individuals</div>
+        <div class="toggle-btn" data-val="polygon">Polygons</div>
+      </div>
+    </div>
+    <div id="polygon-chip-wrap" class="hidden field mt-8">
+      <label class="field-label">Polygons</label>
+      <div class="chip-actions">
+        <button class="btn btn-outline btn-sm" id="sel-poly-all">All</button>
+        <button class="btn btn-outline btn-sm" id="sel-poly-none">None</button>
+      </div>
+      <div id="polygon-chips"></div>
+    </div>
+  </div>
+
+  <!-- 5 · Export -->
+  <div class="section hidden" id="export-section">
+    <div class="section-title">6 · Export</div>
+    <button class="btn btn-success" id="download-btn">⬇ Download Metrics CSV</button>
+  </div>
+
+</div><!-- /sidebar -->
+
+
+<!-- ════════════════════════════════ MAIN ════════════════════════════════════ -->
+<div id="main">
+
+  <div id="chart-area">
+    <div id="empty-state">
+      <div class="es-icon">🌙</div>
+      <div class="es-title">Night : Day Speed Ratio</div>
+      <div class="es-sub">Upload GPS tracking data to begin</div>
+    </div>
+    <div id="chart-wrap" class="hidden">
+      <canvas id="myChart"></canvas>
+    </div>
+  </div>
+
+  <div id="stats-bar" class="hidden">
+    <span>Elephants: <b id="stat-n">—</b></span>
+    <span>Periods: <b id="stat-periods">—</b></span>
+    <span>Valid days used: <b id="stat-days">—</b></span>
+    <span>Overall mean ratio: <b id="stat-mean">—</b></span>
+  </div>
+
+</div><!-- /main -->
+
+
+<script>
+// ═══════════════════════════════════════════════════════════════════════════════
+// Constants
+// ═══════════════════════════════════════════════════════════════════════════════
+const PALETTE = [
+  '#58a6ff','#f78166','#3fb950','#d29922','#bc8cff',
+  '#ff7eb3','#79c0ff','#ffa657','#56d364','#e3b341',
+  '#b392f0','#85e89d','#ffdf5d','#c5def5','#ff6e6e'
+];
+
+// Column name hints — lower-cased, special-chars stripped for matching
+const ID_HINTS   = ['name','individual-local-identifier','individual_local_identifier','id_number','animalid','animal_id','elephant_id','elephantid','individualid','id'];
+const TIME_HINTS = ['timestamp','time_stamp','time_stamp','datetime','date_time','fixtime','acquisitiontime','acqtime'];
+const LAT_HINTS  = ['latitude','lat','location-lat','location_lat','latitude_wgs84','wgs84_lat'];
+const LON_HINTS  = ['longitude','lon','long','location-long','location_lon','location_long','lng','longitude_wgs84','wgs84_lon'];
+const X_HINTS    = ['x','easting','utm_x','utm_easting','coords_x','utmx'];
+const Y_HINTS    = ['y','northing','utm_y','utm_northing','coords_y','utmy'];
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// State
+// ═══════════════════════════════════════════════════════════════════════════════
+let rawRows           = [];
+let allCols           = [];
+let coordType         = 'latlon';
+let period            = 'week';
+let activeSet         = new Set();
+let dailyRatios       = [];   // [{name, localDate, ratio}] — intermediate store
+let metrics           = [];   // [{name, period, mean_nd_ratio, n_days, sd, se}]
+let nameColorMap      = {};
+let chartInst         = null;
+let chartInsts        = [];   // polygon-view instances
+let gapMode             = 'max';
+let medianIntervalHrs   = null;
+let selectedIntervalHrs = 1;
+let toleranceHrs        = 0.5;
+let polygonFeatures     = [];
+let polygonNameProp     = '';
+let activePolygons      = new Set();
+let polyColorMap        = {};
+let chartView           = 'individual';
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Utility — math
+// ═══════════════════════════════════════════════════════════════════════════════
+function validMean(arr) {
+  const v = arr.filter(Number.isFinite);
+  return v.length ? v.reduce((a, b) => a + b, 0) / v.length : NaN;
+}
+function validSd(arr) {
+  const v = arr.filter(Number.isFinite);
+  if (v.length < 2) return NaN;
+  const m = validMean(v);
+  return Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / (v.length - 1));
+}
+function validSe(arr) {
+  const s = validSd(arr);
+  const n = arr.filter(Number.isFinite).length;
+  return Number.isFinite(s) ? s / Math.sqrt(n) : NaN;
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371, r = Math.PI / 180;
+  const dLat = (lat2 - lat1) * r, dLon = (lon2 - lon1) * r;
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(lat1 * r) * Math.cos(lat2 * r) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function euclideanKm(x1, y1, x2, y2) {
+  return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2) / 1000;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Utility — column detection
+// ═══════════════════════════════════════════════════════════════════════════════
+function normalize(s) { return s.toLowerCase().replace(/[^a-z0-9]/g, ''); }
+
+function bestMatch(cols, hints) {
+  const normCols  = cols.map(normalize);
+  const normHints = hints.map(normalize);
+  for (const h of normHints) {
+    const i = normCols.indexOf(h);
+    if (i !== -1) return cols[i];
+  }
+  return '';
+}
+
+function populateSelect(el, cols, best) {
+  el.innerHTML = '<option value="">— select column —</option>' +
+    cols.map(c => `<option value="${c}"${c === best ? ' selected' : ''}>${c}</option>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Utility — timestamps
+// ═══════════════════════════════════════════════════════════════════════════════
+function parseTimestampUTC(str) {
+  if (!str) return null;
+  str = String(str).trim();
+  // Already has explicit timezone: parse directly
+  if (/[Zz]$/.test(str) || /[+-]\d{2}:\d{2}$/.test(str)) {
+    const d = new Date(str);
+    return isNaN(d) ? null : d;
+  }
+  // Bare datetime — treat as UTC (R write.csv format, Movebank default)
+  const iso = str.replace(' ', 'T');
+  const withZ = iso.includes('T') ? iso + 'Z' : iso + 'T00:00:00Z';
+  const d = new Date(withZ);
+  return isNaN(d) ? null : d;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Utility — period keys
+// ═══════════════════════════════════════════════════════════════════════════════
+function getISOWeek(d) {
+  // d is a Date whose UTC fields represent the local date
+  const tmp = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+  const ys = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+  const wk = Math.ceil(((tmp - ys) / 86400000 + 1) / 7);
+  return [tmp.getUTCFullYear(), wk];
+}
+
+function periodKey(localDate, p) {
+  const y = localDate.getUTCFullYear();
+  const m = localDate.getUTCMonth() + 1;
+  if (p === 'year')  return `${y}`;
+  if (p === 'month') return `${y}-${String(m).padStart(2, '0')}`;
+  const [wy, wn] = getISOWeek(localDate);
+  return `${wy}-W${String(wn).padStart(2, '0')}`;
+}
+
+function periodLabel(key, p) {
+  if (p === 'year')  return key;
+  if (p === 'month') {
+    const [y, mo] = key.split('-');
+    return new Date(+y, +mo - 1, 1).toLocaleString('en', { month: 'short', year: 'numeric' });
+  }
+  return key; // "2024-W05"
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// File upload
+// ═══════════════════════════════════════════════════════════════════════════════
+const dropZone  = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('click',    () => fileInput.click());
+dropZone.addEventListener('keydown',  e => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave',() => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadFile(fileInput.files[0]); });
+
+function loadFile(file) {
+  document.getElementById('file-name').textContent = '⏳ Parsing…';
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete(res) {
+      rawRows = res.data;
+      allCols = res.meta.fields || [];
+      document.getElementById('file-name').textContent = `✓ ${file.name} (${rawRows.length.toLocaleString()} rows)`;
+      setupColumnUI();
+    },
+    error(err) {
+      document.getElementById('file-name').textContent = '✗ Parse error — check file format';
+      console.error(err);
+    }
+  });
+}
+
+function setupColumnUI() {
+  document.getElementById('col-section').classList.remove('hidden');
+  document.getElementById('polygon-section').classList.remove('hidden');
+  document.getElementById('settings-section').classList.remove('hidden');
+
+  populateSelect(document.getElementById('col-id'),   allCols, bestMatch(allCols, ID_HINTS));
+  populateSelect(document.getElementById('col-time'), allCols, bestMatch(allCols, TIME_HINTS));
+  populateSelect(document.getElementById('col-lat'),  allCols, bestMatch(allCols, LAT_HINTS));
+  populateSelect(document.getElementById('col-lon'),  allCols, bestMatch(allCols, LON_HINTS));
+  populateSelect(document.getElementById('col-x'),    allCols, bestMatch(allCols, X_HINTS));
+  populateSelect(document.getElementById('col-y'),    allCols, bestMatch(allCols, Y_HINTS));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Coord type toggle
+// ═══════════════════════════════════════════════════════════════════════════════
+document.getElementById('rb-latlon').addEventListener('click', () => setCoordType('latlon'));
+document.getElementById('rb-utm').addEventListener('click',    () => setCoordType('utm'));
+
+function setCoordType(type) {
+  coordType = type;
+  document.getElementById('rb-latlon').classList.toggle('active', type === 'latlon');
+  document.getElementById('rb-utm').classList.toggle('active',    type === 'utm');
+  document.getElementById('latlon-cols').classList.toggle('hidden', type !== 'latlon');
+  document.getElementById('utm-cols').classList.toggle('hidden',    type !== 'utm');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Period toggle — re-aggregate from stored daily ratios
+// ═══════════════════════════════════════════════════════════════════════════════
+document.querySelectorAll('#period-toggle .toggle-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#period-toggle .toggle-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    period = btn.dataset.val;
+    if (dailyRatios.length) {
+      aggregateMetrics();
+      renderChart();
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Polygon upload
+// ═══════════════════════════════════════════════════════════════════════════════
+const polyDropZone  = document.getElementById('poly-drop-zone');
+const polyFileInput = document.getElementById('poly-file-input');
+
+polyDropZone.addEventListener('click',    () => polyFileInput.click());
+polyDropZone.addEventListener('dragover', e => { e.preventDefault(); polyDropZone.style.borderColor = 'var(--accent)'; });
+polyDropZone.addEventListener('dragleave',() => { polyDropZone.style.borderColor = ''; });
+polyDropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  polyDropZone.style.borderColor = '';
+  if (e.dataTransfer.files[0]) loadPolygonFile(e.dataTransfer.files[0]);
+});
+polyFileInput.addEventListener('change', () => { if (polyFileInput.files[0]) loadPolygonFile(polyFileInput.files[0]); });
+
+document.getElementById('poly-name-prop').addEventListener('change', e => {
+  polygonNameProp = e.target.value;
+  updatePolyInfo();
+  if (metrics.length) { metrics = []; dailyRatios = []; resetChart('Polygon names changed — recalculate to apply.'); }
+});
+
+document.getElementById('clear-poly-btn').addEventListener('click', () => {
+  polygonFeatures = []; polygonNameProp = ''; activePolygons = new Set(); polyColorMap = {};
+  polyFileInput.value = '';
+  document.getElementById('poly-file-name').textContent = '';
+  document.getElementById('poly-config').classList.add('hidden');
+  document.getElementById('polygon-chip-wrap').classList.add('hidden');
+  document.getElementById('view-toggle-wrap').classList.add('hidden');
+  chartView = 'individual';
+  document.querySelectorAll('#view-toggle .toggle-btn').forEach((b, i) => b.classList.toggle('active', i === 0));
+  if (metrics.length) { metrics = []; dailyRatios = []; resetChart('Polygons removed — recalculate to apply.'); }
+});
+
+function loadPolygonFile(file) {
+  const isZip = file.name.toLowerCase().endsWith('.zip');
+  document.getElementById('poly-file-name').textContent = '⏳ Loading…';
+
+  if (isZip) {
+    file.arrayBuffer().then(buf => {
+      shp(buf).then(geojson => {
+        // shpjs may return a single FeatureCollection or an array of them (multi-layer zip)
+        const collections = Array.isArray(geojson) ? geojson : [geojson];
+        const features = collections.flatMap(fc =>
+          (fc.features || []).filter(f =>
+            f.geometry && ['Polygon', 'MultiPolygon'].includes(f.geometry.type)
+          )
+        );
+        if (!features.length) {
+          document.getElementById('poly-file-name').textContent = '';
+          alert('No Polygon or MultiPolygon features found in the zip file.\nMake sure the zip contains .shp, .dbf, and .prj files.');
+          return;
+        }
+        ingestFeatures(file.name, features);
+      }).catch(err => {
+        document.getElementById('poly-file-name').textContent = '';
+        alert('Could not read shapefile: ' + err.message + '\n\nMake sure the zip contains the .shp, .dbf, and .prj files.');
+      });
+    });
+  } else {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const geojson = JSON.parse(e.target.result);
+        let features = [];
+        if (geojson.type === 'FeatureCollection') {
+          features = geojson.features.filter(f =>
+            f.geometry && ['Polygon', 'MultiPolygon'].includes(f.geometry.type)
+          );
+        } else if (geojson.type === 'Feature' &&
+                   ['Polygon', 'MultiPolygon'].includes(geojson.geometry?.type)) {
+          features = [geojson];
+        }
+        if (!features.length) {
+          document.getElementById('poly-file-name').textContent = '';
+          alert('No Polygon or MultiPolygon features found in this GeoJSON file.');
+          return;
+        }
+        ingestFeatures(file.name, features);
+      } catch (err) {
+        document.getElementById('poly-file-name').textContent = '';
+        alert('Could not parse GeoJSON: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+  }
+}
+
+function ingestFeatures(filename, features) {
+  // Check coordinates look like WGS84 degrees (not projected metres)
+  const sample = features[0].geometry.coordinates.flat(4).filter(Number.isFinite);
+  const maxVal = Math.max(...sample.map(Math.abs));
+  if (maxVal > 1800) {          // heuristic: UTM eastings are typically 100,000–900,000
+    const proceed = confirm(
+      `Warning: coordinates in this file reach ${Math.round(maxVal).toLocaleString()}, which looks like a projected system (e.g. UTM) rather than WGS84 lat/lon degrees.\n\nThe app needs WGS84 (EPSG:4326). Point-in-polygon tests will likely fail.\n\nProceed anyway?`
+    );
+    if (!proceed) { document.getElementById('poly-file-name').textContent = ''; return; }
+  }
+
+  polygonFeatures = features;
+
+  // Collect all property keys
+  const propKeys = new Set();
+  features.forEach(f => Object.keys(f.properties || {}).forEach(k => propKeys.add(k)));
+  const keys = [...propKeys];
+
+  const sel = document.getElementById('poly-name-prop');
+  sel.innerHTML = keys.length
+    ? keys.map(k => `<option value="${k}">${k}</option>`).join('')
+    : '<option value="">— no properties —</option>';
+
+  const nameHints = ['name','Name','NAME','label','Label','zone','Zone','area','Area','site','Site','id','ID'];
+  for (const h of nameHints) { if (propKeys.has(h)) { sel.value = h; break; } }
+  polygonNameProp = sel.value;
+
+  document.getElementById('poly-file-name').textContent = `✓ ${filename}`;
+  document.getElementById('poly-config').classList.remove('hidden');
+  updatePolyInfo();
+  buildPolygonChips();
+  if (metrics.length) { metrics = []; dailyRatios = []; resetChart('Polygons loaded — recalculate to apply.'); }
+}
+
+function updatePolyInfo() {
+  const names = polygonFeatures.map(f => f.properties?.[polygonNameProp] ?? '(unnamed)');
+  const unique = [...new Set(names)];
+  document.getElementById('poly-info').textContent =
+    `${polygonFeatures.length} polygon${polygonFeatures.length !== 1 ? 's' : ''}: ${unique.join(', ')}`;
+}
+
+function buildPolygonChips() {
+  const names = [...new Set(
+    polygonFeatures.map((f, i) => String(f.properties?.[polygonNameProp] ?? `Polygon ${i + 1}`))
+  )];
+  polyColorMap = {};
+  names.forEach((n, i) => { polyColorMap[n] = PALETTE[(i + 7) % PALETTE.length]; });
+  activePolygons = new Set(names);
+
+  const container = document.getElementById('polygon-chips');
+  container.innerHTML = '';
+  names.forEach(name => {
+    const color = polyColorMap[name];
+    const chip  = document.createElement('div');
+    chip.className    = 'chip';
+    chip.dataset.name = name;
+    chip.style.borderColor = color;
+    chip.style.color       = color;
+    chip.innerHTML = `<span class="chip-dot" style="background:${color}"></span>${name}`;
+    chip.addEventListener('click', () => {
+      if (activePolygons.has(name)) activePolygons.delete(name); else activePolygons.add(name);
+      chip.classList.toggle('inactive', !activePolygons.has(name));
+      if (metrics.length) renderChart();
+    });
+    container.appendChild(chip);
+  });
+
+  document.getElementById('polygon-chip-wrap').classList.remove('hidden');
+  document.getElementById('view-toggle-wrap').classList.remove('hidden');
+}
+
+// View toggle
+document.querySelectorAll('#view-toggle .toggle-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#view-toggle .toggle-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    chartView = btn.dataset.val;
+    if (metrics.length) renderChart();
+  });
+});
+
+// Polygon chip all/none
+document.getElementById('sel-poly-all').addEventListener('click', () => {
+  const names = [...new Set(polygonFeatures.map((f, i) => String(f.properties?.[polygonNameProp] ?? `Polygon ${i+1}`)))];
+  activePolygons = new Set(names);
+  document.querySelectorAll('#polygon-chips .chip').forEach(c => c.classList.remove('inactive'));
+  if (metrics.length) renderChart();
+});
+document.getElementById('sel-poly-none').addEventListener('click', () => {
+  activePolygons.clear();
+  document.querySelectorAll('#polygon-chips .chip').forEach(c => c.classList.add('inactive'));
+  if (metrics.length) renderChart();
+});
+
+// ── Point-in-polygon test (lat/lon mode only) ──────────────────────────────
+function getStepPolygon(lat1, lon1, lat2, lon2) {
+  const pt1 = turf.point([lon1, lat1]);
+  const pt2 = turf.point([lon2, lat2]);
+  for (let i = 0; i < polygonFeatures.length; i++) {
+    const feat = polygonFeatures[i];
+    if (turf.booleanPointInPolygon(pt1, feat) && turf.booleanPointInPolygon(pt2, feat)) {
+      return String(feat.properties?.[polygonNameProp] ?? `Polygon ${i + 1}`);
+    }
+  }
+  return null; // crosses boundary, or one/both fixes outside all polygons
+}
+
+function resetChart(msg) {
+  destroyAllCharts();
+  const wrap = document.getElementById('chart-wrap');
+  wrap.classList.remove('poly-grid');
+  wrap.innerHTML = '<canvas id="myChart"></canvas>';
+  wrap.classList.add('hidden');
+  document.getElementById('stats-bar').classList.add('hidden');
+  const es = document.getElementById('empty-state');
+  es.classList.remove('hidden');
+  es.querySelector('.es-sub').textContent = msg;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Gap mode toggle
+// ═══════════════════════════════════════════════════════════════════════════════
+document.querySelectorAll('#gap-mode-toggle .toggle-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#gap-mode-toggle .toggle-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    gapMode = btn.dataset.val;
+    document.getElementById('max-gap-panel').classList.toggle('hidden',    gapMode !== 'max');
+    document.getElementById('median-gap-panel').classList.toggle('hidden', gapMode !== 'median');
+    document.getElementById('select-gap-panel').classList.toggle('hidden', gapMode !== 'select');
+    document.getElementById('tolerance-panel').classList.toggle('hidden',  gapMode === 'max');
+    // Auto-compute median if columns are already chosen
+    if (gapMode === 'median' && document.getElementById('col-id').value && document.getElementById('col-time').value) {
+      computeMedianInterval();
+    }
+  });
+});
+
+document.getElementById('select-interval').addEventListener('input', () => {
+  selectedIntervalHrs = parseFloat(document.getElementById('select-interval').value) || 1;
+});
+
+document.querySelectorAll('#tolerance-toggle .toggle-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#tolerance-toggle .toggle-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const val = btn.dataset.val;
+    document.getElementById('custom-tol-panel').classList.toggle('hidden', val !== 'custom');
+    if (val !== 'custom') toleranceHrs = parseFloat(val);
+  });
+});
+
+document.getElementById('custom-tol').addEventListener('input', () => {
+  toleranceHrs = parseFloat(document.getElementById('custom-tol').value) || 1;
+});
+
+document.getElementById('compute-median-btn').addEventListener('click', computeMedianInterval);
+
+function computeMedianInterval() {
+  const colId   = document.getElementById('col-id').value;
+  const colTime = document.getElementById('col-time').value;
+  if (!colId || !colTime || !rawRows.length) {
+    document.getElementById('median-display').textContent = 'Select ID & Timestamp first';
+    medianIntervalHrs = null;
+    return null;
+  }
+
+  // Build per-individual sorted, deduped timestamp lists
+  const byName = {};
+  for (const row of rawRows) {
+    const name = String(row[colId] ?? '').trim();
+    if (!name) continue;
+    const t = parseTimestampUTC(row[colTime]);
+    if (!t) continue;
+    if (!byName[name]) byName[name] = [];
+    byName[name].push(t.getTime());
+  }
+
+  const intervals = [];
+  for (const name in byName) {
+    const times = byName[name].sort((a, b) => a - b);
+    const deduped = times.filter((t, i) => i === 0 || t !== times[i - 1]);
+    for (let i = 1; i < deduped.length; i++) {
+      intervals.push((deduped[i] - deduped[i - 1]) / 3_600_000);
+    }
+  }
+
+  if (!intervals.length) {
+    document.getElementById('median-display').textContent = 'No data';
+    medianIntervalHrs = null;
+    return null;
+  }
+
+  intervals.sort((a, b) => a - b);
+  const mid = Math.floor(intervals.length / 2);
+  const median = intervals.length % 2 === 0
+    ? (intervals[mid - 1] + intervals[mid]) / 2
+    : intervals[mid];
+
+  medianIntervalHrs = median;
+
+  // Format display
+  let label;
+  if (median < 1) {
+    label = `${Math.round(median * 60)} min`;
+  } else if (median % 1 === 0) {
+    label = `${median} h`;
+  } else {
+    label = `${median.toFixed(2)} h`;
+  }
+  document.getElementById('median-display').textContent = label;
+  return median;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Calculation
+// ═══════════════════════════════════════════════════════════════════════════════
+document.getElementById('calc-btn').addEventListener('click', runCalculation);
+
+function runCalculation() {
+  const colId   = document.getElementById('col-id').value;
+  const colTime = document.getElementById('col-time').value;
+  const colLat  = document.getElementById('col-lat').value;
+  const colLon  = document.getElementById('col-lon').value;
+  const colX    = document.getElementById('col-x').value;
+  const colY    = document.getElementById('col-y').value;
+  const tzOff   = parseFloat(document.getElementById('tz-offset').value) || 0;
+  const dayStart= parseInt(document.getElementById('day-start').value, 10);
+  const dayEnd  = parseInt(document.getElementById('day-end').value, 10);
+  const minSteps= parseInt(document.getElementById('min-steps').value, 10);
+  const maxSpd  = parseFloat(document.getElementById('max-speed').value);
+  const maxGap  = parseFloat(document.getElementById('max-gap').value);
+
+  // Read tolerance and target interval for median / manual modes
+  if (gapMode !== 'max') {
+    const tol = document.getElementById('tolerance-toggle').querySelector('.active').dataset.val;
+    toleranceHrs = tol === 'custom'
+      ? parseFloat(document.getElementById('custom-tol').value) || 1
+      : parseFloat(tol);
+  }
+  if (gapMode === 'median') {
+    computeMedianInterval();
+    if (medianIntervalHrs === null) {
+      alert('Could not compute median fix interval. Check ID and Timestamp column selections.');
+      return;
+    }
+  } else if (gapMode === 'select') {
+    selectedIntervalHrs = parseFloat(document.getElementById('select-interval').value) || 1;
+  }
+
+  // Validation
+  if (!colId)   { alert('Please select an Elephant ID column.'); return; }
+  if (!colTime) { alert('Please select a Timestamp column.'); return; }
+  if (coordType === 'latlon' && (!colLat || !colLon)) {
+    alert('Please select Latitude and Longitude columns.'); return;
+  }
+  if (coordType === 'utm' && (!colX || !colY)) {
+    alert('Please select X and Y columns.'); return;
+  }
+  if (dayStart >= dayEnd) {
+    alert('Day start must be earlier than day end.'); return;
+  }
+
+  // ── Step 1: parse and group fixes by individual ──────────────────────────
+  const individuals = {};
+  let parseErrors = 0;
+  for (const row of rawRows) {
+    const name = String(row[colId] ?? '').trim();
+    if (!name) continue;
+    const t = parseTimestampUTC(row[colTime]);
+    if (!t) { parseErrors++; continue; }
+
+    let coord;
+    if (coordType === 'latlon') {
+      const lat = parseFloat(row[colLat]);
+      const lon = parseFloat(row[colLon]);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      coord = { lat, lon };
+    } else {
+      const x = parseFloat(row[colX]);
+      const y = parseFloat(row[colY]);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      coord = { x, y };
+    }
+    if (!individuals[name]) individuals[name] = [];
+    individuals[name].push({ t, coord });
+  }
+
+  if (parseErrors > rawRows.length * 0.5) {
+    alert(`Warning: ${parseErrors} of ${rawRows.length} timestamps could not be parsed. Check the Timestamp column selection and format.`);
+  }
+
+  // Sort and deduplicate each individual's fixes (same individual + same timestamp)
+  for (const name in individuals) {
+    individuals[name].sort((a, b) => a.t - b.t);
+    individuals[name] = individuals[name].filter(
+      (fix, i, arr) => i === 0 || fix.t.getTime() !== arr[i - 1].t.getTime()
+    );
+  }
+
+  // ── Step 2: compute steps → group by individual + local date + day/night ─
+  // dailyPool: name → dayKey → { Day: [], Night: [], localDate }
+  const dailyPool = {};
+
+  for (const name in individuals) {
+    const fixes = individuals[name];
+    dailyPool[name] = {};
+
+    for (let i = 0; i < fixes.length - 1; i++) {
+      const f1 = fixes[i], f2 = fixes[i + 1];
+      const dtHrs = (f2.t - f1.t) / 3_600_000;
+      if (dtHrs <= 0) continue;
+      if (gapMode === 'max') {
+        if (dtHrs > maxGap) continue;
+      } else {
+        const target = gapMode === 'median' ? medianIntervalHrs : selectedIntervalHrs;
+        if (Math.abs(dtHrs - target) > toleranceHrs) continue;
+      }
+
+      let distKm;
+      if (coordType === 'latlon') {
+        distKm = haversineKm(f1.coord.lat, f1.coord.lon, f2.coord.lat, f2.coord.lon);
+      } else {
+        distKm = euclideanKm(f1.coord.x, f1.coord.y, f2.coord.x, f2.coord.y);
+      }
+      const spdKmh = distKm / dtHrs;
+      if (!Number.isFinite(spdKmh) || spdKmh < 0 || spdKmh > maxSpd) continue;
+
+      // Polygon assignment — only for lat/lon mode; both fixes must be in the same polygon
+      let stepPolygon = null;
+      if (polygonFeatures.length > 0) {
+        if (coordType !== 'latlon') continue; // polygon filter requires lat/lon
+        stepPolygon = getStepPolygon(f1.coord.lat, f1.coord.lon, f2.coord.lat, f2.coord.lon);
+        if (stepPolygon === null) continue; // crosses boundary or outside all polygons
+      }
+
+      // Local time from departure fix (matches R's timestamp-based day/night)
+      const localMs   = f1.t.getTime() + tzOff * 3_600_000;
+      const localDate = new Date(localMs);           // UTC fields = local time
+      const localHour = localDate.getUTCHours();
+      const dayNight  = (localHour >= dayStart && localHour < dayEnd) ? 'Day' : 'Night';
+
+      const dayKey  = `${localDate.getUTCFullYear()}-`
+                    + `${String(localDate.getUTCMonth() + 1).padStart(2, '0')}-`
+                    + `${String(localDate.getUTCDate()).padStart(2, '0')}`;
+      const poolKey = stepPolygon !== null ? `${dayKey}||${stepPolygon}` : dayKey;
+
+      if (!dailyPool[name][poolKey]) {
+        dailyPool[name][poolKey] = { Day: [], Night: [], localDate, polygon: stepPolygon };
+      }
+      dailyPool[name][poolKey][dayNight].push(spdKmh);
+    }
+  }
+
+  // ── Step 3: compute daily ratios (mirrors metric_night_day_speed_ratio) ──
+  dailyRatios = [];
+  for (const name in dailyPool) {
+    for (const poolKey in dailyPool[name]) {
+      const { Day, Night, localDate, polygon } = dailyPool[name][poolKey];
+      if (Day.length < minSteps || Night.length < minSteps) continue;
+      const meanDay   = validMean(Day);
+      const meanNight = validMean(Night);
+      if (!Number.isFinite(meanDay) || !Number.isFinite(meanNight) || meanDay <= 0) continue;
+      dailyRatios.push({ name, polygon: polygon ?? null, localDate, ratio: meanNight / meanDay });
+    }
+  }
+
+  if (!dailyRatios.length) {
+    alert('No valid daily ratios could be computed.\n\nPossible causes:\n• Incorrect column selection\n• Timezone offset mismatch (all fixes falling in day or night only)\n• Min-steps threshold too high\n• Max speed/gap filters too strict');
+    return;
+  }
+
+  // ── Step 4: aggregate to chosen period ───────────────────────────────────
+  aggregateMetrics();
+
+  // ── Step 5: assign colors, build UI ──────────────────────────────────────
+  const names = [...new Set(metrics.map(m => m.name))].sort();
+  nameColorMap = {};
+  names.forEach((n, i) => { nameColorMap[n] = PALETTE[i % PALETTE.length]; });
+  activeSet = new Set(names);
+  buildChips(names);
+
+  document.getElementById('display-section').classList.remove('hidden');
+  document.getElementById('export-section').classList.remove('hidden');
+
+  renderChart();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Aggregate daily ratios → period metrics
+// ═══════════════════════════════════════════════════════════════════════════════
+function aggregateMetrics() {
+  const byKey = {};
+  for (const dr of dailyRatios) {
+    const pk  = periodKey(dr.localDate, period);
+    const key = `${dr.name}||${String(dr.polygon)}||${pk}`;
+    if (!byKey[key]) byKey[key] = { name: dr.name, polygon: dr.polygon, pk, ratios: [] };
+    byKey[key].ratios.push(dr.ratio);
+  }
+  metrics = Object.values(byKey).map(({ name, polygon, pk, ratios }) => ({
+    name,
+    polygon:       polygon,
+    period:        pk,
+    mean_nd_ratio: +validMean(ratios).toFixed(4),
+    n_days:        ratios.length,
+    sd:            +validSd(ratios).toFixed(4),
+    se:            +validSe(ratios).toFixed(4)
+  }));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Individual chips
+// ═══════════════════════════════════════════════════════════════════════════════
+function buildChips(names) {
+  const container = document.getElementById('individual-chips');
+  container.innerHTML = '';
+  names.forEach(name => {
+    const color = nameColorMap[name];
+    const chip  = document.createElement('div');
+    chip.className    = 'chip';
+    chip.dataset.name = name;
+    chip.style.borderColor = color;
+    chip.style.color       = color;
+    chip.innerHTML = `<span class="chip-dot" style="background:${color}"></span>${name}`;
+    chip.addEventListener('click', () => {
+      if (activeSet.has(name)) activeSet.delete(name); else activeSet.add(name);
+      chip.classList.toggle('inactive', !activeSet.has(name));
+      renderChart();
+    });
+    container.appendChild(chip);
+  });
+}
+
+document.getElementById('sel-all').addEventListener('click', () => {
+  const names = [...new Set(metrics.map(m => m.name))].sort();
+  activeSet = new Set(names);
+  document.querySelectorAll('.chip').forEach(c => c.classList.remove('inactive'));
+  renderChart();
+});
+document.getElementById('sel-none').addEventListener('click', () => {
+  activeSet.clear();
+  document.querySelectorAll('.chip').forEach(c => c.classList.add('inactive'));
+  renderChart();
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Chart
+// ═══════════════════════════════════════════════════════════════════════════════
+document.getElementById('show-mean').addEventListener('change',   renderChart);
+document.getElementById('show-points').addEventListener('change', renderChart);
+
+function buildChartOptions(allPeriods, showPoints, showMean, filteredForPoly) {
+  return {
+    responsive:          true,
+    maintainAspectRatio: false,
+    animation:           { duration: 350 },
+    interaction:         { mode: 'index', intersect: false },
+    plugins: {
+      legend: {
+        labels: {
+          color:    '#8b949e',
+          font:     { size: 11 },
+          boxWidth: 14,
+          filter:   item => !item.text.startsWith('_'),
+        }
+      },
+      tooltip: {
+        backgroundColor: '#21262d',
+        borderColor:     '#30363d',
+        borderWidth:     1,
+        titleColor:      '#e6edf3',
+        bodyColor:       '#8b949e',
+        padding:         10,
+        callbacks: {
+          label(ctx) {
+            if (ctx.dataset.label.startsWith('_')) return null;
+            const v = ctx.parsed.y;
+            if (v == null) return null;
+            const suffix = ctx.dataset.label === 'Population mean' ? '' :
+              (() => {
+                const m = filteredForPoly.find(x => x.name === ctx.dataset.label && x.period === allPeriods[ctx.dataIndex]);
+                return m ? ` (n=${m.n_days} days)` : '';
+              })();
+            return ` ${ctx.dataset.label}: ${v.toFixed(3)}${suffix}`;
+          }
+        }
+      }
+    },
+    scales: {
+      x: {
+        ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 50 },
+        grid:  { color: 'rgba(48,54,61,0.6)' },
+      },
+      y: {
+        title:  { display: true, text: 'N:D ratio', color: '#8b949e', font: { size: 11 } },
+        ticks:  { color: '#8b949e', font: { size: 10 } },
+        grid:   { color: 'rgba(48,54,61,0.6)' },
+        min:    0,
+        suggestedMax: 2,
+      }
+    }
+  };
+}
+
+function buildIndividualDatasets(filteredForPoly, allPeriods, showPoints, showMean) {
+  const names    = [...new Set(filteredForPoly.map(m => m.name))].sort();
+  const datasets = [];
+
+  datasets.push({
+    label: '_ref',
+    data:  allPeriods.map(() => 1),
+    borderColor: 'rgba(255,255,255,0.15)',
+    borderWidth: 1,
+    borderDash:  [4, 4],
+    pointRadius: 0,
+    fill: false, tension: 0, order: 99,
+  });
+
+  names.forEach(name => {
+    const color    = nameColorMap[name];
+    const byPeriod = {};
+    filteredForPoly.filter(m => m.name === name).forEach(m => { byPeriod[m.period] = m; });
+    datasets.push({
+      label:            name,
+      data:             allPeriods.map(p => byPeriod[p] ? byPeriod[p].mean_nd_ratio : null),
+      borderColor:      color,
+      backgroundColor:  color + '33',
+      borderWidth:      1.5,
+      pointRadius:      showPoints ? 4 : 0,
+      pointHoverRadius: 6,
+      pointBackgroundColor: color,
+      tension:          0.3,
+      spanGaps:         false,
+      fill:             false,
+      order:            1,
+    });
+  });
+
+  if (showMean && names.length > 1) {
+    const meanByP = {}, seByP = {};
+    allPeriods.forEach(p => {
+      const vals = filteredForPoly.filter(m => m.period === p).map(m => m.mean_nd_ratio).filter(Number.isFinite);
+      meanByP[p] = validMean(vals);
+      seByP[p]   = validSe(vals);
+    });
+    datasets.push({
+      label: '_se_hi',
+      data:  allPeriods.map(p => Number.isFinite(meanByP[p]) && Number.isFinite(seByP[p]) ? +(meanByP[p] + seByP[p]).toFixed(4) : null),
+      borderColor: 'rgba(255,255,255,0)', borderWidth: 0, pointRadius: 0,
+      fill: false, spanGaps: false, order: 0,
+    });
+    datasets.push({
+      label: '_se_lo',
+      data:  allPeriods.map(p => Number.isFinite(meanByP[p]) && Number.isFinite(seByP[p]) ? +(meanByP[p] - seByP[p]).toFixed(4) : null),
+      borderColor: 'rgba(255,255,255,0)', borderWidth: 0, pointRadius: 0,
+      fill: '-1', backgroundColor: 'rgba(255,255,255,0.07)', spanGaps: false, order: 0,
+    });
+    datasets.push({
+      label:       'Population mean',
+      data:        allPeriods.map(p => Number.isFinite(meanByP[p]) ? +meanByP[p].toFixed(4) : null),
+      borderColor: 'rgba(255,255,255,0.85)',
+      borderWidth: 2.5, borderDash: [6, 3], pointRadius: 0,
+      fill: false, spanGaps: false, tension: 0.3, order: 0,
+    });
+  }
+
+  return datasets;
+}
+
+function destroyAllCharts() {
+  if (chartInst) { chartInst.destroy(); chartInst = null; }
+  chartInsts.forEach(c => c.destroy());
+  chartInsts = [];
+}
+
+function renderChart() {
+  document.getElementById('empty-state').classList.add('hidden');
+  document.getElementById('chart-wrap').classList.remove('hidden');
+  document.getElementById('stats-bar').classList.remove('hidden');
+  updateStats();
+
+  const showMean   = document.getElementById('show-mean').checked;
+  const showPoints = document.getElementById('show-points').checked;
+
+  let filtered = metrics.filter(m => activeSet.has(m.name));
+  if (polygonFeatures.length > 0) {
+    filtered = filtered.filter(m => activePolygons.has(m.polygon));
+  }
+
+  const wrap = document.getElementById('chart-wrap');
+
+  if (chartView === 'polygon' && polygonFeatures.length > 0) {
+    // ── One chart per polygon ────────────────────────────────────────────
+    destroyAllCharts();
+    wrap.classList.add('poly-grid');
+    wrap.innerHTML = '';
+
+    const polyNames = [...new Set(filtered.map(m => m.polygon))].filter(p => p !== null).sort();
+
+    polyNames.forEach(polyName => {
+      const polyFiltered = filtered.filter(m => m.polygon === polyName);
+      const allPeriods   = [...new Set(polyFiltered.map(m => m.period))].sort();
+      const labels       = allPeriods.map(p => periodLabel(p, period));
+
+      const card = document.createElement('div');
+      card.className = 'poly-chart-card';
+
+      const title = document.createElement('div');
+      title.className = 'poly-chart-title';
+      title.textContent = polyName;
+
+      const canvasWrap = document.createElement('div');
+      canvasWrap.className = 'poly-chart-canvas-wrap';
+
+      const canvas = document.createElement('canvas');
+      canvasWrap.appendChild(canvas);
+      card.appendChild(title);
+      card.appendChild(canvasWrap);
+      wrap.appendChild(card);
+
+      const datasets = buildIndividualDatasets(polyFiltered, allPeriods, showPoints, showMean);
+      const inst = new Chart(canvas.getContext('2d'), {
+        type: 'line',
+        data: { labels, datasets },
+        options: buildChartOptions(allPeriods, showPoints, showMean, polyFiltered),
+      });
+      chartInsts.push(inst);
+    });
+
+  } else {
+    // ── Single chart (individual view) ───────────────────────────────────
+    destroyAllCharts();
+    wrap.classList.remove('poly-grid');
+    wrap.innerHTML = '<canvas id="myChart"></canvas>';
+
+    const allPeriods = [...new Set(filtered.map(m => m.period))].sort();
+    const labels     = allPeriods.map(p => periodLabel(p, period));
+    const datasets   = buildIndividualDatasets(filtered, allPeriods, showPoints, showMean);
+
+    chartInst = new Chart(document.getElementById('myChart').getContext('2d'), {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        ...buildChartOptions(allPeriods, showPoints, showMean, filtered),
+        scales: {
+          x: {
+            ticks: { color: '#8b949e', font: { size: 10 }, maxRotation: 50 },
+            grid:  { color: 'rgba(48,54,61,0.6)' },
+          },
+          y: {
+            title:  { display: true, text: 'Night : Day speed ratio', color: '#8b949e', font: { size: 11 } },
+            ticks:  { color: '#8b949e', font: { size: 10 } },
+            grid:   { color: 'rgba(48,54,61,0.6)' },
+            min:    0,
+            suggestedMax: 2,
+          }
+        }
+      },
+    });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Stats bar
+// ═══════════════════════════════════════════════════════════════════════════════
+function updateStats() {
+  const filtered = metrics.filter(m => activeSet.has(m.name));
+  const nNames   = new Set(filtered.map(m => m.name)).size;
+  const nPeriods = new Set(filtered.map(m => m.period)).size;
+  const nDays    = filtered.reduce((s, m) => s + m.n_days, 0);
+  const ratios   = filtered.map(m => m.mean_nd_ratio).filter(Number.isFinite);
+  document.getElementById('stat-n').textContent       = nNames;
+  document.getElementById('stat-periods').textContent = nPeriods;
+  document.getElementById('stat-days').textContent    = nDays;
+  document.getElementById('stat-mean').textContent    = ratios.length ? validMean(ratios).toFixed(3) : '—';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CSV export
+// ═══════════════════════════════════════════════════════════════════════════════
+document.getElementById('download-btn').addEventListener('click', () => {
+  const periodCol = period === 'week' ? 'iso_week' : period;
+  const hasPoly   = polygonFeatures.length > 0;
+  const header    = (hasPoly ? ['polygon'] : [])
+    .concat(['name', periodCol, 'mean_nd_ratio', 'n_days', 'sd', 'se']).join(',');
+  const rows = metrics.map(m =>
+    (hasPoly ? [m.polygon ?? ''] : [])
+      .concat([m.name, m.period, m.mean_nd_ratio, m.n_days,
+               Number.isFinite(m.sd) ? m.sd : '',
+               Number.isFinite(m.se) ? m.se : '']).join(',')
+  );
+  const csv  = [header, ...rows].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), {
+    href:     url,
+    download: `nd_speed_ratio_${period}.csv`
+  });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+</script>
+</body>
+</html>
