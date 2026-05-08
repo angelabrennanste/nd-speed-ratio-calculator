@@ -414,6 +414,7 @@
     <div class="field">
       <label class="field-label">Aggregation period</label>
       <div class="toggle-group" id="period-toggle">
+        <div class="toggle-btn"        data-val="day">Day</div>
         <div class="toggle-btn active" data-val="week">Week</div>
         <div class="toggle-btn"        data-val="month">Month</div>
         <div class="toggle-btn"        data-val="year">Year</div>
@@ -758,6 +759,8 @@ function getISOWeek(d) {
 function periodKey(localDate, p) {
   const y = localDate.getUTCFullYear();
   const m = localDate.getUTCMonth() + 1;
+  const d = localDate.getUTCDate();
+  if (p === 'day')   return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   if (p === 'year')  return `${y}`;
   if (p === 'month') return `${y}-${String(m).padStart(2, '0')}`;
   const [wy, wn] = getISOWeek(localDate);
@@ -765,6 +768,10 @@ function periodKey(localDate, p) {
 }
 
 function periodLabel(key, p) {
+  if (p === 'day') {
+    const [y, mo, dy] = key.split('-');
+    return new Date(+y, +mo - 1, +dy).toLocaleString('en', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
   if (p === 'year')  return key;
   if (p === 'month') {
     const [y, mo] = key.split('-');
@@ -1419,7 +1426,7 @@ function buildChartOptions(allPeriods, showPoints, showMean, filteredForPoly) {
             const suffix = ctx.dataset.label === 'Population mean' ? '' :
               (() => {
                 const m = filteredForPoly.find(x => x.name === ctx.dataset.label && x.period === allPeriods[ctx.dataIndex]);
-                return m ? ` (n=${m.n_days} days)` : '';
+                return m && m.n_days > 1 ? ` (n=${m.n_days} days)` : '';
               })();
             return ` ${ctx.dataset.label}: ${v.toFixed(3)}${suffix}`;
           }
@@ -1619,7 +1626,7 @@ function updateStats() {
 // CSV export
 // ═══════════════════════════════════════════════════════════════════════════════
 document.getElementById('download-btn').addEventListener('click', () => {
-  const periodCol = period === 'week' ? 'iso_week' : period;
+  const periodCol = period === 'week' ? 'iso_week' : period === 'day' ? 'date' : period;
   const hasPoly   = polygonFeatures.length > 0;
   const header    = (hasPoly ? ['polygon'] : [])
     .concat(['name', periodCol, 'mean_nd_ratio', 'n_days', 'sd', 'se']).join(',');
