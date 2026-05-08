@@ -676,18 +676,70 @@ function populateSelect(el, cols, best) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // Utility — timestamps
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// Normalise a date string (any separator, any field order) to YYYY-MM-DD.
+// Handles YYYY-MM-DD, YYYY/MM/DD, DD/MM/YYYY, MM/DD/YYYY (US), and mixed
+// separators.  For ambiguous cases where both candidate day and month are ≤ 12
+// (e.g. 04/05/2023) the function defaults to DD/MM/YYYY (international order).
+function normaliseDatePart(s) {
+  // Fast-path: already YYYY-MM-DD (with optional single-digit month/day)
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)) return s;
+
+  const delim = s.includes('/') ? '/' : s.includes('-') ? '-' : null;
+  if (!delim) return null;
+
+  const segs = s.split(delim);
+  if (segs.length !== 3) return null;
+
+  const nums = segs.map(Number);
+  const [a, b, c] = nums;
+  let year, month, day;
+
+  if (segs[0].length === 4) {
+    // YYYY/MM/DD  or  YYYY-MM-DD (non-fast-path, e.g. single-digit parts)
+    [year, month, day] = [a, b, c];
+  } else if (segs[2].length === 4) {
+    // Year is last — determine field order from magnitude
+    if (a > 12) {
+      [day, month, year] = [a, b, c];       // DD/MM/YYYY
+    } else if (b > 12) {
+      [month, day, year] = [a, b, c];       // MM/DD/YYYY  (US style)
+    } else {
+      [day, month, year] = [a, b, c];       // ambiguous → DD/MM/YYYY
+    }
+  } else {
+    return null;  // no 4-digit year component found
+  }
+
+  if (!year || month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 function parseTimestampUTC(str) {
   if (!str) return null;
   str = String(str).trim();
+
   // Already has explicit timezone: parse directly
   if (/[Zz]$/.test(str) || /[+-]\d{2}:\d{2}$/.test(str)) {
     const d = new Date(str);
     return isNaN(d) ? null : d;
   }
-  // Bare datetime — treat as UTC (R write.csv format, Movebank default)
-  const iso = str.replace(' ', 'T');
-  const withZ = iso.includes('T') ? iso + 'Z' : iso + 'T00:00:00Z';
-  const d = new Date(withZ);
+
+  // Split into date and time parts on T or first space
+  const tIdx = str.indexOf('T') !== -1 ? str.indexOf('T') : str.indexOf(' ');
+  let datePart = tIdx === -1 ? str : str.slice(0, tIdx);
+  let timePart = tIdx === -1 ? '' : str.slice(tIdx + 1);
+
+  // Normalise date to YYYY-MM-DD (handles slashes and field-order variants)
+  datePart = normaliseDatePart(datePart);
+  if (!datePart) return null;
+
+  // Pad HH:MM to HH:MM:00 so Date constructor is unambiguous
+  if (timePart && timePart.split(':').length === 2) timePart += ':00';
+
+  // Treat as UTC (R write.csv / Movebank default when no timezone present)
+  const isoStr = timePart ? `${datePart}T${timePart}Z` : `${datePart}T00:00:00Z`;
+  const d = new Date(isoStr);
   return isNaN(d) ? null : d;
 }
 
